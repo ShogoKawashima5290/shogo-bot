@@ -48,12 +48,50 @@
 		// 使命のみを摘出しユーザーが入力した市名と比較
 		foreach ($crawler->filter('channel ldWeather|source pref city') as $city)  {
 			// 一致すれば住所IDを取得し処理を抜ける
-			if($city->getAttribute('title') == $location || $city->getAttribute('title'). "市" == $location) {
+			if($city->getAttribute('title') == $location | $city->getAttribute('title'). "市" == $location) {
 				$locationId = $city->getAttribute('id');
 				break;
 			}
 		}
-
+		// 一致するものがなければ
+		if(empty($locationId)) {
+			// 公募の配列
+			$suggestArray = array();
+			// 県名を摘出しユーザーが入力した県名と比較
+			foreach ($crawler->filter('channel ldWeather|source pref') as $pref) {
+				// 一致すれば
+				if(strpos($pref->getAttribute('title'), $location) !== false) {
+					// その県に属する市を配列に追加
+					foreach($pref->childNodes as $child) {
+						if($child instanceof DOMElement && $child->nodeName == 'city') {
+							array_push($suggestArray, $child->getAttribute('title'));
+						}
+					}
+					break;
+				}
+			}
+			// 候補が存在する場合
+			if(count($suggestArray) > 0) {
+				// アクションの配列
+				$actionArray = array();
+				// 候補をすべてアクションにして追加
+				foreach($suggestArray as $city) {
+					array_push($actionArray, new LINE\LINEBot\TemplateActionBuilder\MessageTemplateActionBuilder ($city, $city));
+				}
+				// Buttonsテンプレートを返信
+				$builder = new \LINE\LINEBot\MessageBuilder\TemplateMessageBuilder(
+					'見つかりませんでした。',
+					new \LINE\LINEBot\MessageBuilder\TemplateBuilder\ButtonTemplateBuilder( '見つかりませんでした。', 'もしかして？', null, $actionArray));
+				$bot->replyMessage($event->getReplyToken(), $builder);
+			}
+			// 候補が存在しない場合
+			else {
+				// 正しい入力方法を返信
+				replyTextMessage($bot, $event->getReplyToken(),  '入力された地名が見つかりませんでした。市を入力してください。');
+			}
+			// 以降の処理はスキップ
+			continue;
+		}
 		replyTextMessage($bot, $event->getReplyToken(), $location . 'の住所IDは' . $locationId . "です。");
 	}
 
