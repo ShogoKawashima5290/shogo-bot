@@ -32,12 +32,43 @@
 			continue;
 		}
 		// TextMessageクラスのインスタンスでなければ処理をスキップ
-		if (!($event instanceof \LINE\LINEBot\Event\MessageEvent\TextMessage)) {
-			error_log('Non text message has come');
-			continue;
+		if ($event instanceof \LINE\LINEBot\Event\MessageEvent\TextMessage) {
+			$location = $event -> getText();
 		}
-		// 入力されたテキストを取得
-		$location = $event->getText();
+		// LocationMessageクラスのインスタンスの場合
+		else if ($event instanceof \LINE\LINEBot\Event\MessageEvent\LocationMessage) {
+			// Google APIにアクセスし経度緯度から住所を取得
+			$jsonString = file_get_contents('https://maps.googleapis.com/maps/api/geocode/json?language=ja&latlng=' . $event -> getLatitude() . ',' . $event -> getLongitude());
+
+			// 文字列を連想配列に変換
+			$json = json_decode($jsonString, true);
+			// 住所情報のみを取り出し
+			$addressComponentArray = $json['results'][0]['address_components'];
+			// 要素をループで処理
+			foreach($addressComponentArray as $addressComponent) {
+				// 県名を取得
+				if (in_array('administrative_area_level_1', $addressComponent['types'])) {
+					$prefName = $addressComponent['long_name'];
+					break;
+				}
+			}
+			// 東京都大阪の場合他県と内容が違うので特別な処理
+			if ($prefName === '東京都') {
+				$location = '東京';
+			} else if($prefName === '大阪府') {
+				$location = '大阪';
+			// それ以外
+			} else {
+				// 要素をループで処理
+				foreach($addressComponentArray as $addressComponent) {
+					// 市名を取得
+					if (in_array('locality', $addressComponent['types']) && !in_array('ward', $addressComponent['types'])) {
+						$location = $addressComponent['long_name'];
+						break;
+					}
+				}
+			}
+		}
 
 		// 住所ID用変数
 		$locationId;
@@ -55,6 +86,10 @@
 		}
 		// 一致するものがなければ
 		if(empty($locationId)) {
+			// 位置情報が送られたときは件名を取得済みなのでそれを代入
+			if ($event instanceof \LINE\LINEBot\Event\MessageEvent\LocationMessage) {
+				$location = $prefName;
+			}
 			// 公募の配列
 			$suggestArray = array();
 			// 県名を摘出しユーザーが入力した県名と比較
